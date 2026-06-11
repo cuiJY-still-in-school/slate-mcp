@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# gh-slate — gh CLI extension wrapper
+# 安装: gh extension install cuiJY-still-in-school/slate
+# 使用: gh slate [命令]
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# 如果是从源码运行（未编译），用 tsx
+if [ -f "$SCRIPT_DIR/dist/index.js" ]; then
+  exec node "$SCRIPT_DIR/dist/index.js" "$@"
+else
+  exec npx tsx "$SCRIPT_DIR/src/index.ts" "$@"
+fi

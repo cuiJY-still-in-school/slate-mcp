@@ -1,43 +1,18 @@
 /**
  * GitHub API 层
  *
- * 通过 gh CLI（用户已登录）获取 token，直接调 GitHub REST API。
  * 全球石板网络的所有搜索、读取、写入都走这一层。
+ * Token 获取委托给 auth 模块（石板登录 > 环境变量 > gh CLI）。
  */
 
 import { execSync } from "node:child_process";
+import { getToken } from "../auth/index.js";
 
 // ─── 凭据 ───────────────────────────────────────────
 
-let cachedToken: string | null = null;
-
-/** 获取 GitHub 认证 token（优先 GITHUB_TOKEN 环境变量，其次 gh CLI） */
+/** 获取 GitHub 认证 token（委托给 auth 模块） */
 export async function getGitHubToken(): Promise<string | null> {
-  if (cachedToken) return cachedToken;
-
-  // 1. 环境变量
-  const envToken = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
-  if (envToken) {
-    cachedToken = envToken;
-    return envToken;
-  }
-
-  // 2. gh CLI
-  try {
-    const token = execSync("gh auth token", {
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "pipe"],
-      timeout: 5000,
-    }).trim();
-    if (token) {
-      cachedToken = token;
-      return token;
-    }
-  } catch {
-    // gh CLI 不可用
-  }
-
-  return null;
+  return getToken();
 }
 
 /** 获取当前 GitHub 用户名 */
