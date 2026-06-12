@@ -301,16 +301,43 @@ export async function enrichQuality(result: SearchResult): Promise<SearchResult>
     }
     if (result.source === "npm") {
       const pkgName = result.repo.replace("npm:", "");
-      const npmData = await fetch(`https://api.npmjs.org/downloads/point/last-month/${encodeURIComponent(pkgName)}`, {
-        headers: { "User-Agent": "slate-protocol/0.1" },
-      });
-      if (npmData.ok) {
-        const dl = await npmData.json() as { downloads?: number };
+      // 并行获取下载量 + 包元数据
+      const [dlRes, metaRes] = await Promise.all([
+        fetch(`https://api.npmjs.org/downloads/point/last-month/${encodeURIComponent(pkgName)}`, {
+          headers: { "User-Agent": "slate-protocol/0.1" },
+        }),
+        fetch(`https://registry.npmjs.org/${encodeURIComponent(pkgName)}/latest`, {
+          headers: { "User-Agent": "slate-protocol/0.1" },
+        }),
+      ]);
+      if (dlRes.ok) {
+        const dl = await dlRes.json() as { downloads?: number };
         result.npmDownloads = dl.downloads || 0;
-        // npm 质量评分: 下载量为主
-        const d = result.npmDownloads;
-        result.qualityScore = Math.round(d > 1000000 ? 95 : d > 100000 ? 80 : d > 10000 ? 60 : d > 1000 ? 40 : 20);
-        result.stars = result.npmDownloads; // 用下载量覆盖 stars
+        result.stars = result.npmDownloads;
+      }
+      // 包元数据: types, dependencies, license
+      if (metaRes.ok) {
+        const meta = await metaRes.json() as {
+          types?: string; typings?: string; license?: string;
+          dependencies?: Record<string, string>; devDependencies?: Record<string, string>;
+        };
+        // 有类型定义 +15分
+        const hasTypes = !!(meta.types || meta.typings);
+        // 依赖数少 +10分（轻量加分）
+        const depCount = Object.keys(meta.dependencies || {}).length;
+        const isLightweight = depCount <= 5;
+        // 有 license +5分
+        const hasLicense = !!meta.license;
+
+        const d = result.npmDownloads || 0;
+        let score = d > 1000000 ? 80 : d > 100000 ? 65 : d > 10000 ? 45 : d > 1000 ? 30 : 15;
+        if (hasTypes) score += 10;
+        if (isLightweight) score += 5;
+        if (hasLicense) score += 5;
+        result.qualityScore = Math.min(100, Math.round(score));
+
+        // 补充 license（如果 GitHub 没拿到）
+        if (!result.license && meta.license) result.license = typeof meta.license === "string" ? meta.license : "see-package.json";
       }
     }
   } catch { /* enrichment is best-effort */ }
