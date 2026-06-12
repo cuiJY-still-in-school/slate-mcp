@@ -17,7 +17,7 @@ program.name("slate").description("🪨 石板 — 全球 AI 协作协议").vers
 
 // ─── 默认：MCP Server ──────────────────────────────
 program
-  .command("mcp", { isDefault: true })
+  .command("mcp")
   .description("启动 MCP Server")
   .action(async () => {
     const { startMcpServer } = await import("./mcp.js");
