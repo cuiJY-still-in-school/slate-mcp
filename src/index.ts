@@ -2,12 +2,12 @@
  * 石板 (Slate) v0.1 — MCP Server
  *
  * 用法:
- *   npx @slate-protocol/slate-mcp mcp    MCP Server 模式（Claude Code 接入）
+ *   npx @slate-protocol/slate mcp    MCP Server 模式（Claude Code 接入）
  *   slate login                           GitHub 登录
  *   slate whoami                          查看登录状态
  *
  * Claude Code 接入:
- *   claude mcp add slate -- npx @slate-protocol/slate-mcp mcp
+ *   claude mcp add slate -- npx @slate-protocol/slate mcp
  */
 
 import { getToken } from "./auth/index.js";
@@ -67,10 +67,10 @@ async function main(): Promise<void> {
   slate whoami       查看当前登录用户
 
 Claude Code 接入:
-  claude mcp add slate -- npx @slate-protocol/slate-mcp mcp
+  claude mcp add slate -- npx @slate-protocol/slate mcp
 
 项目级接入 (.mcp.json):
-  { "mcpServers": { "slate": { "type": "stdio", "command": "npx", "args": ["@slate-protocol/slate-mcp", "mcp"] } } }
+  { "mcpServers": { "slate": { "type": "stdio", "command": "npx", "args": ["@slate-protocol/slate", "mcp"] } } }
 `);
       break;
 

@@ -1,5 +1,5 @@
 {
-  "name": "@slate-protocol/slate-mcp",
+  "name": "@slate-protocol/slate",
   "version": "0.1.0",
   "description": "石板 — 开放、零信任、以 Git 为唯一真相源的人-AI 共创协议。MCP Server + 5 个 AI 工具实现全球协作网络。",
   "type": "module",

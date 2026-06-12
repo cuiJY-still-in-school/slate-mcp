@@ -10,7 +10,7 @@
 
 ```bash
 # 接入 Claude Code（一行命令）
-claude mcp add slate -- npx @slate-protocol/slate-mcp mcp
+claude mcp add slate -- npx @slate-protocol/slate mcp
 
 # 或项目级（提交 .mcp.json，团队成员自动获得）
 cat > .mcp.json << 'EOF'
@@ -19,7 +19,7 @@ cat > .mcp.json << 'EOF'
     "slate": {
       "type": "stdio",
       "command": "npx",
-      "args": ["@slate-protocol/slate-mcp", "mcp"]
+      "args": ["@slate-protocol/slate", "mcp"]
     }
   }
 }
