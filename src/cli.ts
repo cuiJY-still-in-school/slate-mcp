@@ -109,6 +109,40 @@ program
     console.log("下次启动 AI 工具时，石板工具自动加载。");
   });
 
+// ─── status ────────────────────────────────────────
+program
+  .command("status")
+  .description("查看配置状态")
+  .action(() => {
+    const cwd = process.cwd();
+    const auth = loadAuth();
+
+    console.log("");
+    console.log(auth ? `👤 ${auth.user}  ✅` : "👤 未登录  ❌");
+    console.log("");
+
+    const sd = join(cwd, ".slate");
+    console.log(existsSync(sd) ? "📋 .slate/  ✅" : "📋 .slate/  ❌ (slate setup)");
+    if (existsSync(sd)) {
+      for (const f of ["identity.json", "intention.json", "foundation.json", "dependencies.json"]) {
+        console.log(`   ${existsSync(join(sd, f)) ? "✅" : "⬚"} ${f}`);
+      }
+    }
+    console.log("");
+
+    const platforms = [
+      [join(cwd, ".mcp.json"), "Claude Code"],
+      [join(cwd, ".cursor", "mcp.json"), "Cursor"],
+      [join(cwd, "openclaw.mcp.json"), "OpenClaw"],
+    ] as const;
+    let found = false;
+    for (const [path, name] of platforms) {
+      if (existsSync(path)) { console.log(`🔌 ${name}  ✅`); found = true; }
+    }
+    if (!found) console.log("🔌 未关联 AI 工具  ❌ (slate setup)");
+    console.log("");
+  });
+
 // ─── login ─────────────────────────────────────────
 program
   .command("login")
