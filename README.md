@@ -2,47 +2,56 @@
 
 **开放、零信任、以 Git 为唯一真相源的人-AI 共创协议。**
 
-一个 MCP Server。接入 AI 工具后，自动获得全球搜索、质量评估、复用、发布能力。用户完全无感。
+一个 MCP Server，6 个 AI 工具。接入 Claude Code / Cursor / Copilot 后，AI 自动拥有全球搜索、质量评估、复用、发布能力。用户完全无感。
 
 ---
 
 ## 安装
 
 ```bash
+# 方式1: 一键安装
+curl -fsSL https://raw.githubusercontent.com/cuiJY-still-in-school/slate/main/install.sh | bash
+
+# 方式2: 手动
 git clone https://github.com/cuiJY-still-in-school/slate.git
-cd slate
-npm install && npm run build
+cd slate && npm install && npm run build
 ```
 
 ## 配置
 
 ```bash
-node dist/index.js setup              # 自动检测 AI 工具
-node dist/index.js setup -p cursor    # 指定平台
+slate setup -t <github-token>    # PAT 一键完成全部配置
+slate setup                       # 自动检测 gh CLI 或已有登录
+slate setup -p cursor             # 指定 AI 工具
 ```
 
-一条命令：初始化 `.slate/` + 写入 MCP 配置。支持 Claude Code、Cursor、Copilot。
+一条命令完成：GitHub 登录 → 初始化 `.slate/` → MCP 配置 → 关联 AI 工具。
 
-## 启动
+GitHub token 需要 `repo` 和 `read:user` 权限：[创建 token](https://github.com/settings/tokens/new)。
+
+## 命令
 
 ```bash
-node dist/index.js     # 启动 MCP Server
+slate              # 启动 MCP Server
+slate setup        # 配置（登录 + 初始化 + AI 工具关联）
+slate login        # 单独 GitHub 登录（设备流 / PAT）
+slate login -t <t> # 用 PAT 登录
 ```
-
-配置完成后，AI 工具自动加载 6 个石板工具。
 
 ---
 
 ## 工具
 
+AI 工具接入后自动加载：
+
 | 工具 | 功能 |
 |------|------|
 | `slate_search` | 全球搜索 GitHub 仓库（`.slate/` 加权） |
 | `slate_review` | 质量分析（Issues 评价 + 适用场景） |
-| `slate_read` | 读取协议文件 |
-| `slate_write` | 写入协议文件 |
-| `slate_claim` | 认领意图 |
-| `slate_publish` | 发布地基 |
+| `slate_read` | 读取 `.slate/` 协议文件 |
+| `slate_write` | 写入协议文件（Zod 校验） |
+| `slate_claim` | 认领意图（fork + PR） |
+| `slate_publish` | 发布意图/地基 |
 
 ---
 
@@ -58,10 +67,12 @@ node dist/index.js     # 启动 MCP Server
 
 ---
 
-## 飞轮
+## 参与
 
-```
-你写代码 → AI 自动搜 GitHub → 发现地基 → 复用 → 发布 → 下一个 AI 受益
+给项目打上 `slate-foundation` 或 `slate-intention` topic，全球 AI 就能通过 `slate_search` 发现。
+
+```bash
+gh api repos/{owner}/{repo}/topics -X PUT --input - <<<'{"names":["slate-foundation"]}'
 ```
 
 ---
