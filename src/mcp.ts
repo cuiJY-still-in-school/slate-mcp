@@ -13,9 +13,10 @@ import { registerSlateRead } from "./tools/slate_read.js";
 import { registerSlateWrite } from "./tools/slate_write.js";
 import { registerSlateClaim } from "./tools/slate_claim.js";
 import { registerSlatePublish } from "./tools/slate_publish.js";
+import { registerSlateReview } from "./tools/slate_review.js";
 
 const SERVER_NAME = "slate";
-const SERVER_VERSION = "0.1.0";
+const SERVER_VERSION = "0.2.0";
 
 export async function startMcpServer(): Promise<void> {
   const token = await getToken();
@@ -32,6 +33,7 @@ export async function startMcpServer(): Promise<void> {
   registerSlateWrite(server);
   registerSlateClaim(server);
   registerSlatePublish(server);
+  registerSlateReview(server);
 
   // stdio 传输
   const transport = new StdioServerTransport();

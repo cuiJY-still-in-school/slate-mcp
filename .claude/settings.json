@@ -5,7 +5,8 @@
       "mcp__slate__slate_read",
       "mcp__slate__slate_write",
       "mcp__slate__slate_claim",
-      "mcp__slate__slate_publish"
+      "mcp__slate__slate_publish",
+      "mcp__slate__slate_review"
     ]
   },
   "hooks": {

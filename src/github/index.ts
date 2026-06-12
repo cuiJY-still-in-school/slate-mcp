@@ -77,11 +77,19 @@ export interface SearchResult {
   owner: string;
   name: string;
   description: string;
-  stars: number;      // GitHub stars or npm weekly downloads/100
+  stars: number;
   type: "intention" | "foundation";
   source: "github" | "npm";
   url: string;
   updatedAt: string;
+  // 质量信号
+  openIssues?: number;
+  license?: string;
+  lastCommitAt?: string;
+  npmDownloads?: number;
+  qualityScore?: number;  // 0-100 composite
+  suitableFor?: string[];  // 适合做什么——从issues/README/topics提炼
+  painPoints?: string[];   // 不适合做什么——从issue抱怨中提炼
 }
 
 /**
@@ -184,6 +192,175 @@ export async function searchGlobal(
   } catch (e) { /* npm 搜索失败不影响 */ }
 
   return [...results.values()].sort((a, b) => b.stars - a.stars).slice(0, limit);
+}
+
+// ─── 专有逻辑：适合做什么分析 ──────────────────────
+
+/** 从 repo topics、README、最近 issues 提炼"适合做什么"和"痛点" */
+export async function analyzeSuitability(result: SearchResult): Promise<SearchResult> {
+  if (result.source !== "github") return result;
+
+  const suitable: Set<string> = new Set();
+  const pains: Set<string> = new Set();
+
+  try {
+    // 1. 从 topics 推断适用场景
+    const repoData = await githubApi(`/repos/${result.repo}`);
+    if (repoData) {
+      const topics = (repoData.topics as string[]) || [];
+      const desc = (repoData.description as string) || "";
+
+      // topic → 中文场景映射
+      const topicMap: Record<string, string> = {
+        "payment": "支付集成", "stripe": "Stripe支付", "react": "React项目",
+        "api": "API开发", "cli": "命令行工具", "ui": "界面组件",
+        "database": "数据库", "auth": "认证授权", "testing": "自动化测试",
+        "typescript": "TypeScript项目", "docker": "容器化部署", "aws": "AWS云服务",
+        "ai": "AI/ML", "machine-learning": "机器学习", "css": "样式组件",
+        "form": "表单处理", "button": "按钮组件", "table": "表格组件",
+        "chart": "图表可视化", "markdown": "Markdown渲染", "pdf": "PDF生成",
+        "email": "邮件处理", "queue": "消息队列", "cache": "缓存",
+        "logging": "日志记录", "monitoring": "监控", "security": "安全",
+        "ssr": "SSR服务端渲染", "static-site": "静态网站", "mobile": "移动端",
+        "desktop": "桌面应用", "serverless": "Serverless", "webhook": "Webhook",
+      };
+
+      for (const topic of topics) {
+        const mapped = topicMap[topic];
+        if (mapped) suitable.add(mapped);
+      }
+
+      // 从 description 提取常见模式
+      if (desc.match(/framework|library|sdk|toolkit/i)) suitable.add("快速集成");
+      if (desc.match(/plugin|extension|middleware/i)) suitable.add("插件扩展");
+      if (desc.match(/lightweight|minimal|simple/i)) suitable.add("轻量级项目");
+      if (desc.match(/enterprise|production|scalable/i)) suitable.add("企业级应用");
+    }
+
+    // 2. 从最近 Issues 推断真实使用场景和痛点
+    const issuesData = await githubApi(
+      `/repos/${result.repo}/issues?state=all&sort=created&direction=desc&per_page=20`
+    );
+    const issues = Array.isArray(issuesData)
+      ? issuesData as Array<{ title: string; body?: string; labels?: Array<{ name: string }> }>
+      : [];
+
+    const issueTexts = issues.map(i => `${i.title} ${i.body || ""}`).join(" ").toLowerCase();
+
+    // issue 关键词 → 真实使用场景
+    if (issueTexts.match(/\bpayment\b|\bstripe\b|\bcheckout\b/)) suitable.add("支付流程");
+    if (issueTexts.match(/\bsubscription\b|\brecurring\b|\bbilling\b/)) suitable.add("订阅计费");
+    if (issueTexts.match(/\bwebhook\b|\bcallback\b|\bevent\b/)) suitable.add("事件驱动");
+    if (issueTexts.match(/\bform\b|\binput\b|\bvalidation\b/)) suitable.add("表单验证");
+    if (issueTexts.match(/\bupload\b|\bdownload\b|\bfile\b/)) suitable.add("文件处理");
+    if (issueTexts.match(/\bexport\b|\bimport\b|\bcsv\b|\bjson\b/)) suitable.add("数据导入导出");
+    if (issueTexts.match(/\berror\b|\bexception\b|\bcrash\b/)) pains.add("错误处理需加强");
+    if (issueTexts.match(/\btypescript\b|\btype\b|\binterface\b/)) suitable.add("TypeScript类型安全");
+    if (issueTexts.match(/\bssr\b|\bnext\.?js\b|\bnuxt\b/)) suitable.add("Next.js/Nuxt SSR");
+    if (issueTexts.match(/\b100\b|\blarge\b|\bslow\b|\bperformance\b|\bmemory\b/)) pains.add("大数据量场景可能性能不足");
+    if (issueTexts.match(/\bwindows\b|\bedge\b|\bsafari\b|\bie\b/)) pains.add("跨平台兼容性注意");
+    if (issueTexts.match(/\bdocumentation\b|\bdoc\b|\bexample\b|\bguide\b/))
+      suitable.add("文档完善");
+    else
+      pains.add("文档可能缺乏");
+
+    // 3. issues 的 label 分析
+    const labels = issues.flatMap(i => (i.labels || []).map(l => l.name.toLowerCase()));
+    if (labels.some(l => l.includes("bug"))) pains.add("有已知bug");
+    if (labels.some(l => l.includes("enhancement") || l.includes("feature"))) suitable.add("活跃开发中");
+    if (labels.some(l => l.includes("help wanted") || l.includes("good first issue"))) suitable.add("社区友好");
+
+  } catch { /* best effort */ }
+
+  result.suitableFor = [...suitable].slice(0, 5);
+  result.painPoints = [...pains].slice(0, 3);
+  return result;
+}
+
+// ─── 质量信号 ───────────────────────────────────────
+
+/** 为搜索结果补充质量信号（GitHub issues、commit、npm 下载量） */
+export async function enrichQuality(result: SearchResult): Promise<SearchResult> {
+  try {
+    if (result.source === "github") {
+      const repoData = await githubApi(`/repos/${result.repo}`);
+      if (repoData) {
+        result.openIssues = repoData.open_issues_count as number;
+        result.license = (repoData.license as { spdx_id?: string })?.spdx_id;
+        result.lastCommitAt = repoData.pushed_at as string;
+        // 质量评分: stars 信号 + 维护活跃度 + issue 健康度
+        const stars = result.stars || 0;
+        const issues = result.openIssues || 0;
+        const pushedAt = result.lastCommitAt ? Date.parse(result.lastCommitAt) : 0;
+        const daysSincePush = (Date.now() - pushedAt) / 86400000;
+        const activityScore = Math.max(0, 100 - daysSincePush * 2); // 2个月内活跃=满分
+        const issueScore = stars > 0 ? Math.max(0, 100 - (issues / stars) * 100) : 50;
+        result.qualityScore = Math.round(stars > 1000 ? 80 + Math.min(20, stars / 500) :
+          Math.round((activityScore * 0.5 + issueScore * 0.3 + Math.min(100, stars / 10) * 0.2)));
+      }
+    }
+    if (result.source === "npm") {
+      const pkgName = result.repo.replace("npm:", "");
+      const npmData = await fetch(`https://api.npmjs.org/downloads/point/last-month/${encodeURIComponent(pkgName)}`, {
+        headers: { "User-Agent": "slate-protocol/0.1" },
+      });
+      if (npmData.ok) {
+        const dl = await npmData.json() as { downloads?: number };
+        result.npmDownloads = dl.downloads || 0;
+        // npm 质量评分: 下载量为主
+        const d = result.npmDownloads;
+        result.qualityScore = Math.round(d > 1000000 ? 95 : d > 100000 ? 80 : d > 10000 ? 60 : d > 1000 ? 40 : 20);
+        result.stars = result.npmDownloads; // 用下载量覆盖 stars
+      }
+    }
+  } catch { /* enrichment is best-effort */ }
+  // 专有逻辑：适合做什么分析
+  return analyzeSuitability(result);
+}
+
+/** 获取仓库的 Issues + PR 活跃度摘要 */
+export interface RepoActivity {
+  openIssues: number;
+  closedIssues: number;
+  openPRs: number;
+  recentIssueTitles: string[];
+  healthLabel: "healthy" | "moderate" | "neglected" | "unknown";
+}
+
+export async function getRepoActivity(repo: string): Promise<RepoActivity | null> {
+  try {
+    // 并行获取 open/closed issues
+    const [openData, closedData] = await Promise.all([
+      githubApi(`/search/issues?q=repo:${repo}+type:issue+state:open&per_page=1`),
+      githubApi(`/search/issues?q=repo:${repo}+type:issue+state:closed&per_page=1`),
+    ]);
+    const openIssues = (openData?.total_count as number) || 0;
+    const closedIssues = (closedData?.total_count as number) || 0;
+
+    // 最近的 issue 标题
+    const recentData = await githubApi(`/repos/${repo}/issues?state=all&sort=updated&per_page=5`);
+    const recentDataArr = recentData && !Array.isArray(recentData) ? (recentData as Record<string, unknown>).items : recentData;
+    const recentItems = Array.isArray(recentDataArr) ? recentDataArr as Array<{ title: string; state: string; updated_at: string }> : [];
+    const recentIssueTitles = (recentItems || []).map(i => i.title);
+
+    // PRs
+    const prData = await githubApi(`/search/issues?q=repo:${repo}+type:pr+state:open&per_page=1`);
+    const openPRs = (prData?.total_count as number) || 0;
+
+    // 健康度: issue 关闭率
+    const total = openIssues + closedIssues;
+    const closeRate = total > 0 ? closedIssues / total : 0;
+    let healthLabel: RepoActivity["healthLabel"] = "unknown";
+    if (total > 0) {
+      if (closeRate > 0.7) healthLabel = "healthy";
+      else if (closeRate > 0.3) healthLabel = "moderate";
+      else healthLabel = "neglected";
+    }
+
+    return { openIssues, closedIssues, openPRs, recentIssueTitles, healthLabel };
+  } catch {
+    return null;
+  }
 }
 
 // ─── 文件读取 ───────────────────────────────────────
