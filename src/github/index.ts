@@ -85,126 +85,104 @@ export interface SearchResult {
 }
 
 /**
- * 全球搜索石板意图和地基
+ * 全球搜索——不限于石板协议，搜 GitHub + npm 的全部公开资源。
  *
- * 两大渠道：
- * 1. GitHub Code Search — 搜 .slate/ 文件内容
- * 2. GitHub Repo Search — 搜 topic:slate-intention / topic:slate-foundation
+ * 三大渠道：
+ * 1. GitHub Repo Search — 匹配 name/description/readme/topics，按 stars 排序
+ * 2. GitHub Code Search — 搜 .slate/ 协议文件，精确匹配（加权）
+ * 3. npm Registry — 搜索 npm 包（description/keywords）
  *
- * 合并、去重、按 stars 排序返回。
+ * 每个 GitHub 仓库和 npm 包本身就是"地基"——AI 自己会判断是否可复用。
+ * .slate/ 协议文件是锦上添花的结构化元数据。
  */
 export async function searchGlobal(
   query: string,
-  type: "intention" | "foundation" | "both" = "both",
+  _type: "intention" | "foundation" | "both" = "both",
   limit = 20
 ): Promise<SearchResult[]> {
   const results: Map<string, SearchResult> = new Map();
 
   const addResult = (r: SearchResult) => {
-    if (!results.has(r.repo)) {
-      results.set(r.repo, r);
-    }
+    if (!results.has(r.repo)) results.set(r.repo, r);
   };
 
-  // 渠道1: Code Search — 搜 .slate/ 目录下的文件
+  // 渠道1: GitHub Repo Search（主渠道——搜所有仓库，不设协议门槛）
   try {
-    const types = type === "both"
-      ? ["intention", "foundation"]
-      : [type];
-    for (const t of types) {
-      const q = `path:.slate/${t}.json ${query}`;
-      const data = await githubApi(
-        `/search/code?q=${encodeURIComponent(q)}&per_page=${Math.min(limit, 10)}`
-      );
-      const items = (data?.items as Array<Record<string, unknown>>) || [];
-      for (const item of items) {
-        const repo = item.repository as Record<string, unknown> | undefined;
-        if (!repo) continue;
-        addResult({
-          repo: repo.full_name as string,
-          owner: (repo.owner as Record<string, string>)?.login || "",
-          name: repo.name as string,
-          description: (repo.description as string) || "",
-          stars: (repo.stargazers_count as number) || 0,
-          source: "github" as const,
-          type: t as "intention" | "foundation",
-          url: repo.html_url as string,
-          updatedAt: repo.updated_at as string,
-        });
-      }
-    }
-  } catch (e) {
-    console.error("Code search failed:", e);
-  }
-
-  // 渠道2: Repo Search — 搜 topic 标签
-  try {
-    const topics =
-      type === "intention" ? "topic:slate-intention" :
-      type === "foundation" ? "topic:slate-foundation" :
-      "topic:slate-intention topic:slate-foundation";
-    const q = `${topics} ${query}`;
     const data = await githubApi(
-      `/search/repositories?q=${encodeURIComponent(q)}&sort=stars&per_page=${Math.min(limit, 10)}`
+      `/search/repositories?q=${encodeURIComponent(query)}&sort=stars&per_page=${Math.min(limit, 10)}`
     );
     const items = (data?.items as Array<Record<string, unknown>>) || [];
     for (const item of items) {
-      // 自动归类：先检查 topic
       const itemTopics = (item.topics as string[]) || [];
-      const itemType: "intention" | "foundation" =
-        itemTopics.includes("slate-foundation") ? "foundation" : "intention";
+      const hasSlate = itemTopics.some((t: string) => t.startsWith("slate-"));
       addResult({
         repo: item.full_name as string,
         owner: (item.owner as Record<string, string>)?.login || "",
         name: item.name as string,
         description: (item.description as string) || "",
         stars: (item.stargazers_count as number) || 0,
-          source: "github" as const,
-        type: itemType,
+        source: "github",
+        type: hasSlate ? (itemTopics.includes("slate-foundation") ? "foundation" : "intention") : "foundation",
         url: item.html_url as string,
         updatedAt: item.updated_at as string,
       });
     }
-  } catch (e) {
-    console.error("Repo search failed:", e);
-  }
+  } catch (e) { /* GitHub search 失败不影响其他渠道 */ }
 
-  // 渠道3: npm registry — 搜 keywords:slate-foundation / slate-intention
-  if (type === "both" || type === "foundation") {
-    try {
-      const npmQuery = `keywords:slate-foundation,slate-intention ${query}`;
-      const npmUrl = `https://registry.npmjs.org/-/v1/search?text=${encodeURIComponent(npmQuery)}&size=${limit}`;
-      const res = await fetch(npmUrl, {
-        headers: { "User-Agent": "slate-protocol/0.1" },
+  // 渠道2: GitHub Code Search — .slate/ 协议文件（加权补充）
+  try {
+    const q = `path:.slate/ ${query}`;
+    const data = await githubApi(
+      `/search/code?q=${encodeURIComponent(q)}&per_page=${Math.min(limit, 5)}`
+    );
+    const items = (data?.items as Array<Record<string, unknown>>) || [];
+    for (const item of items) {
+      const repo = item.repository as Record<string, unknown> | undefined;
+      if (!repo) continue;
+      const fileName = (item.name as string) || "";
+      addResult({
+        repo: repo.full_name as string,
+        owner: (repo.owner as Record<string, string>)?.login || "",
+        name: repo.name as string,
+        description: (repo.description as string) || "",
+        stars: ((repo.stargazers_count as number) || 0) + 1000, // 协议文件加权
+        source: "github",
+        type: fileName.includes("intention") ? "intention" : "foundation",
+        url: repo.html_url as string,
+        updatedAt: repo.updated_at as string,
       });
-      if (res.ok) {
-        const data = await res.json() as {
-          objects?: Array<{
-            package: { name: string; description?: string; version: string; date: string; links: { npm: string; repository?: string } };
-            score: { final: number };
-          }>;
-        };
-        for (const obj of data.objects || []) {
-          const pkg = obj.package;
-          addResult({
-            repo: `npm:${pkg.name}`,
-            owner: pkg.name.split("/")[0].replace("@", ""),
-            name: pkg.name,
-            description: pkg.description || "",
-            stars: Math.round(obj.score.final * 1000), // npm search score → stars proxy
-            type: "foundation",
-            source: "npm",
-            url: pkg.links.npm,
-            updatedAt: pkg.date,
-          });
-        }
-      }
-    } catch (e) {
-      console.error("npm search failed:", e);
     }
-  }
+  } catch (e) { /* code search 失败不影响 */ }
 
-  // 排序：按 stars 降序
+  // 渠道3: npm Registry（搜所有包，不限 slate keywords）
+  try {
+    const npmUrl = `https://registry.npmjs.org/-/v1/search?text=${encodeURIComponent(query)}&size=${limit}`;
+    const res = await fetch(npmUrl, { headers: { "User-Agent": "slate-protocol/0.1" } });
+    if (res.ok) {
+      const data = await res.json() as {
+        objects?: Array<{
+          package: { name: string; description?: string; version: string; date: string; links: { npm: string } };
+          score: { final: number };
+        }>;
+      };
+      for (const obj of data.objects || []) {
+        const pkg = obj.package;
+        const owner = pkg.name.startsWith("@") ? pkg.name.split("/")[0].slice(1) : "npm";
+        addResult({
+          repo: `npm:${pkg.name}`,
+          owner,
+          name: pkg.name,
+          description: pkg.description || "",
+          stars: Math.round(obj.score.final * 1000),
+          type: "foundation",
+          source: "npm",
+          url: pkg.links.npm,
+          updatedAt: pkg.date,
+        });
+      }
+    }
+  } catch (e) { /* npm 搜索失败不影响 */ }
+
   return [...results.values()].sort((a, b) => b.stars - a.stars).slice(0, limit);
 }
 
