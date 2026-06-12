@@ -63,14 +63,4 @@ AI 工具接入后自动加载：
 
 ---
 
-## 参与
-
-给项目打上 `slate-foundation` 或 `slate-intention` topic，全球 AI 就能通过 `slate_search` 发现。
-
-```bash
-gh api repos/{owner}/{repo}/topics -X PUT --input - <<<'{"names":["slate-foundation"]}'
-```
-
----
-
 [协议规范](spec/protocol-v0.1.md) · [GitHub](https://github.com/cuiJY-still-in-school/slate) · MIT

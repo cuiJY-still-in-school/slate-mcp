@@ -126,14 +126,6 @@ slate login    # GitHub 登录
 
 ---
 
-## 参与
-
-```bash
-gh api repos/{owner}/{repo}/topics -X PUT --input - <<<'{"names":["slate-foundation"]}'
-```
-
----
-
 ## 版本
 
 | 版本 | 日期 | 变更 |
