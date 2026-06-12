@@ -18,8 +18,6 @@ const CACHE_TTL = 5 * 60 * 1000; // 5分钟
 function cacheKey(query: string, tech_stack?: string, type?: string): string {
   return `${query}|${tech_stack || ""}|${type || "both"}`;
 }
-import { searchGlobal, enrichQuality, type SearchResult } from "../github/index.js";
-
 function formatResults(results: SearchResult[]): string {
   if (results.length === 0) {
     return `未找到匹配的结果。
