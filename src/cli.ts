@@ -1,22 +1,19 @@
 /**
- * 石板 CLI
+ * 石板 CLI — 3 条命令
  *   slate        启动 MCP Server
- *   slate setup  配置 + GitHub 登录 + 关联 AI 工具
- *   slate login  单独 GitHub 登录
+ *   slate setup  一条龙配置
+ *   slate login  GitHub 登录
  */
 
 import { Command } from "commander";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { execSync } from "node:child_process";
-import { loadAuth, deviceFlowLogin } from "./auth/index.js";
+import { loadAuth, deviceFlowLogin, saveAuth } from "./auth/index.js";
 
 const program = new Command();
 
-program
-  .name("slate")
-  .description("🪨 石板 — 全球 AI 协作协议")
-  .version("0.2.0");
+program.name("slate").description("🪨 石板 — 全球 AI 协作协议").version("0.2.0");
 
 // ─── 默认：MCP Server ──────────────────────────────
 program
@@ -27,96 +24,105 @@ program
     await startMcpServer();
   });
 
-// ─── setup：GitHub登录 + 配置 + 关联AI工具 ──────────
+// ─── setup ─────────────────────────────────────────
 program
   .command("setup")
-  .description("GitHub 登录 + 初始化石板 + 关联 AI 工具")
+  .description("一条龙配置：GitHub 登录 → 初始化 → 关联 AI 工具")
   .option("-p, --platform <p>", "claude-code | cursor | copilot | openclaw")
   .action(async (opts) => {
     const cwd = process.cwd();
+    console.log("🪨 石板 setup");
+    console.log("");
 
-    // 1. GitHub 登录 — gh CLI 优先，否则设备流
+    // 1. GitHub
+    console.log("→ GitHub 登录…");
     let auth = loadAuth();
-    if (!auth) {
+    if (auth) {
+      console.log(`  ✅ 已登录: ${auth.user}`);
+    } else {
       try {
-        const token = execSync("gh auth token", { encoding: "utf-8", stdio: ["pipe","pipe","pipe"], timeout: 5000 }).trim();
-        if (token) {
-          // 存下来供 MCP 工具使用
-          const { saveAuth } = await import("./auth/index.js");
-          const user = execSync("gh api user --jq .login", { encoding: "utf-8", stdio: ["pipe","pipe","pipe"], timeout: 5000 }).trim();
-          saveAuth({ token, user, loginAt: new Date().toISOString(), method: "gh_cli" });
-          auth = { token, user, loginAt: new Date().toISOString(), method: "gh_cli" };
-        }
+        const token = execSync("gh auth token", { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], timeout: 5000 }).trim();
+        const user = execSync("gh api user --jq .login", { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], timeout: 5000 }).trim();
+        saveAuth({ token, user, loginAt: new Date().toISOString(), method: "gh_cli" });
+        auth = { token, user, loginAt: new Date().toISOString(), method: "gh_cli" };
+        console.log(`  ✅ gh CLI: ${user}`);
       } catch {
-        console.log("🔐 需要 GitHub 登录");
+        console.log("  未检测到 gh CLI，启动设备流登录…");
         auth = await deviceFlowLogin();
+        if (!auth) return;
       }
     }
-    if (!auth) return;
-    console.log(`👤 GitHub: ${auth.user}`);
 
-    const user = auth.user;
+    // 2. 初始化 .slate/
+    console.log("→ 初始化 .slate/…");
     const slateDir = join(cwd, ".slate");
     if (!existsSync(slateDir)) {
       mkdirSync(slateDir, { recursive: true });
       writeFileSync(join(slateDir, "identity.json"), JSON.stringify({
-        protocol: "slate/0.1", type: "standalone", owner: user,
+        protocol: "slate/0.1", type: "standalone", owner: auth.user,
         created: new Date().toISOString(),
       }, null, 2) + "\n");
       writeFileSync(join(slateDir, "dependencies.json"), JSON.stringify({ dependencies: [] }, null, 2) + "\n");
+      console.log("  ✅ .slate/identity.json");
+      console.log("  ✅ .slate/dependencies.json");
+    } else {
+      console.log("  ✅ 已存在");
     }
 
-    // 2. 选平台
+    // 3. 平台
+    console.log("→ 关联 AI 工具…");
     const platform = opts.platform || (await detectPlatform());
     if (!platform) {
-      console.log("未检测到 AI 工具。指定: slate setup -p claude-code|cursor|copilot");
+      console.log("  ⚠️  未检测到 AI 工具");
+      console.log("  指定: slate setup -p claude-code|cursor|copilot|openclaw");
       return;
     }
 
-    // 3. 写入 MCP 配置
+    const mcp = { mcpServers: { slate: { type: "stdio", command: "node", args: [join(cwd, "dist/index.js"), "mcp"] } } };
     switch (platform) {
       case "claude-code": {
-        const mcp = { mcpServers: { slate: { type: "stdio", command: "node", args: [join(cwd, "dist/index.js"), "mcp"] } } };
         writeFileSync(join(cwd, ".mcp.json"), JSON.stringify(mcp, null, 2) + "\n");
-        console.log("✅ .mcp.json — Claude Code");
+        console.log("  ✅ .mcp.json → Claude Code");
         break;
       }
       case "cursor": {
-        const cursorDir = join(cwd, ".cursor");
-        if (!existsSync(cursorDir)) mkdirSync(cursorDir);
-        const mcp = { mcpServers: { slate: { type: "stdio", command: "node", args: [join(cwd, "dist/index.js"), "mcp"] } } };
-        writeFileSync(join(cursorDir, "mcp.json"), JSON.stringify(mcp, null, 2) + "\n");
-        console.log("✅ .cursor/mcp.json — Cursor");
-        break;
-      }
-      case "copilot": {
-        console.log("复制以下到 .vscode/settings.json:");
-        console.log(JSON.stringify({ "github.copilot.mcp.servers": { slate: { command: "node", args: [join(cwd, "dist/index.js"), "mcp"] } } }, null, 2));
+        const cd = join(cwd, ".cursor");
+        if (!existsSync(cd)) mkdirSync(cd);
+        writeFileSync(join(cd, "mcp.json"), JSON.stringify(mcp, null, 2) + "\n");
+        console.log("  ✅ .cursor/mcp.json → Cursor");
         break;
       }
       case "openclaw": {
-        const mcp = { mcpServers: { slate: { type: "stdio", command: "node", args: [join(cwd, "dist/index.js"), "mcp"] } } };
         writeFileSync(join(cwd, "openclaw.mcp.json"), JSON.stringify(mcp, null, 2) + "\n");
-        console.log("✅ openclaw.mcp.json — OpenClaw");
-        console.log("   在 openclaw 中导入: openclaw mcp set slate -- node dist/index.js mcp");
+        console.log("  ✅ openclaw.mcp.json → OpenClaw");
+        break;
+      }
+      case "copilot": {
+        console.log("  复制到 .vscode/settings.json:");
+        console.log("  " + JSON.stringify({ "github.copilot.mcp.servers": { slate: { command: "node", args: [join(cwd, "dist/index.js"), "mcp"] } } }));
         break;
       }
     }
 
-    console.log(`🪨 石板已配置 (owner: ${user}, platform: ${platform})`);
+    console.log("");
+    console.log(`🪨 完成！${auth.user} @ ${platform}`);
+    console.log("下次启动 AI 工具时，石板工具自动加载。");
   });
 
-// ─── login：单独登录 ──────────────────────────────
+// ─── login ─────────────────────────────────────────
 program
   .command("login")
   .description("GitHub 设备流登录")
   .action(async () => {
-    try { await deviceFlowLogin(); } catch (e) {
+    try {
+      await deviceFlowLogin();
+    } catch (e) {
       console.log(`❌ ${e instanceof Error ? e.message : String(e)}`);
       console.log("备选: gh auth login && slate setup");
     }
   });
 
+// ─── detect ────────────────────────────────────────
 async function detectPlatform(): Promise<string | null> {
   try { execSync("claude --version", { stdio: "pipe", timeout: 3000 }); return "claude-code"; } catch {}
   try { execSync("openclaw --version", { stdio: "pipe", timeout: 3000 }); return "openclaw"; } catch {}
