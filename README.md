@@ -20,22 +20,18 @@ cd slate && npm install && npm run build
 ## 配置
 
 ```bash
-slate setup -t <github-token>    # PAT 一键完成全部配置
-slate setup                       # 自动检测 gh CLI 或已有登录
+slate setup                       # 自动检测 gh CLI，否则引导设备流登录
 slate setup -p cursor             # 指定 AI 工具
 ```
 
 一条命令完成：GitHub 登录 → 初始化 `.slate/` → MCP 配置 → 关联 AI 工具。
-
-GitHub token 需要 `repo` 和 `read:user` 权限：[创建 token](https://github.com/settings/tokens/new)。
 
 ## 命令
 
 ```bash
 slate              # 启动 MCP Server
 slate setup        # 配置（登录 + 初始化 + AI 工具关联）
-slate login        # 单独 GitHub 登录（设备流 / PAT）
-slate login -t <t> # 用 PAT 登录
+slate login        # GitHub 设备流登录
 ```
 
 ---

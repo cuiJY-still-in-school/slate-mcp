@@ -1,14 +1,12 @@
 /**
  * 石板登录系统
  *
- * GitHub OAuth 设备流 + PAT 回退。
+ * GitHub OAuth 设备流登录。
  * Token 存储在 ~/.slate/auth.json
  *
  * 用法:
- *   slate login       → GitHub 设备流登录
- *   slate login --token <pat> → 直接用 Personal Access Token
- *   slate logout      → 清除登录
- *   slate whoami      → 显示当前登录用户
+ *   slate login  → GitHub 设备流登录
+ *   slate setup  → 自动检测 gh CLI 或引导登录
  */
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
@@ -175,8 +173,7 @@ export async function deviceFlowLogin(): Promise<AuthData | null> {
     const err = await deviceRes.json() as { error_description?: string };
     throw new Error(
       `设备流初始化失败: ${err.error_description || deviceRes.statusText}\n` +
-      `提示: 设置 SLATE_CLIENT_ID 环境变量为你注册的 GitHub OAuth App client_id\n` +
-      `或使用 PAT 登录: slate login --token <personal-access-token>`
+      `提示: 设置 SLATE_CLIENT_ID 环境变量为你注册的 GitHub OAuth App client_id`
     );
   }
 
@@ -265,30 +262,6 @@ export async function deviceFlowLogin(): Promise<AuthData | null> {
 
   console.log("⏰ 授权超时，请重新运行 slate login");
   return null;
-}
-
-// ─── PAT 登录 ──────────────────────────────────────
-
-/**
- * 用 Personal Access Token 直接登录
- */
-export async function patLogin(token: string): Promise<AuthData | null> {
-  console.log("验证 token...");
-  const user = await fetchUser(token);
-  if (!user) {
-    console.log("❌ Token 无效，请检查后重试");
-    return null;
-  }
-
-  const auth: AuthData = {
-    token,
-    user,
-    loginAt: new Date().toISOString(),
-    method: "pat",
-  };
-  saveAuth(auth);
-  console.log(`✅ 已登录 GitHub 账号: ${user}`);
-  return auth;
 }
 
 // ─── 退出登录 ──────────────────────────────────────

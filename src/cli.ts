@@ -9,7 +9,7 @@ import { Command } from "commander";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { execSync } from "node:child_process";
-import { loadAuth, patLogin, deviceFlowLogin } from "./auth/index.js";
+import { loadAuth, deviceFlowLogin } from "./auth/index.js";
 
 const program = new Command();
 
@@ -32,27 +32,24 @@ program
   .command("setup")
   .description("GitHub 登录 + 初始化石板 + 关联 AI 工具")
   .option("-p, --platform <p>", "claude-code | cursor | copilot")
-  .option("-t, --token <token>", "GitHub Personal Access Token")
   .action(async (opts) => {
     const cwd = process.cwd();
 
-    // 1. GitHub 登录
+    // 1. GitHub 登录 — gh CLI 优先，否则设备流
     let auth = loadAuth();
     if (!auth) {
-      if (opts.token) {
-        auth = await patLogin(opts.token);
-      } else {
-        // 尝试 gh CLI
-        try {
-          const token = execSync("gh auth token", { encoding: "utf-8", stdio: ["pipe","pipe","pipe"], timeout: 5000 }).trim();
-          if (token) auth = await patLogin(token);
-        } catch {
-          console.log("⚠️  未登录 GitHub");
-          console.log("   slate setup -t <github-token>  使用 PAT 登录");
-          console.log("   gh auth login                  使用 GitHub CLI 登录后重试");
-          console.log("   创建 token: https://github.com/settings/tokens/new (需要 repo, read:user)");
-          return;
+      try {
+        const token = execSync("gh auth token", { encoding: "utf-8", stdio: ["pipe","pipe","pipe"], timeout: 5000 }).trim();
+        if (token) {
+          // 存下来供 MCP 工具使用
+          const { saveAuth } = await import("./auth/index.js");
+          const user = execSync("gh api user --jq .login", { encoding: "utf-8", stdio: ["pipe","pipe","pipe"], timeout: 5000 }).trim();
+          saveAuth({ token, user, loginAt: new Date().toISOString(), method: "gh_cli" });
+          auth = { token, user, loginAt: new Date().toISOString(), method: "gh_cli" };
         }
+      } catch {
+        console.log("🔐 需要 GitHub 登录");
+        auth = await deviceFlowLogin();
       }
     }
     if (!auth) return;
@@ -105,16 +102,11 @@ program
 // ─── login：单独登录 ──────────────────────────────
 program
   .command("login")
-  .description("GitHub 登录（设备流或 PAT）")
-  .option("-t, --token <token>", "Personal Access Token")
-  .action(async (opts) => {
-    if (opts.token) {
-      await patLogin(opts.token);
-    } else {
-      try { await deviceFlowLogin(); } catch (e) {
-        console.log(`❌ ${e instanceof Error ? e.message : String(e)}`);
-        console.log("备选: slate login -t <token>");
-      }
+  .description("GitHub 设备流登录")
+  .action(async () => {
+    try { await deviceFlowLogin(); } catch (e) {
+      console.log(`❌ ${e instanceof Error ? e.message : String(e)}`);
+      console.log("备选: gh auth login && slate setup");
     }
   });
 
