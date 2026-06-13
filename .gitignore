@@ -4,3 +4,5 @@ dist/
 slate
 .slate-claim-tmp
 .mcp.json
+.cursor/mcp.json
+openclaw.mcp.json
