@@ -279,18 +279,21 @@ export async function enrichQuality(result: SearchResult): Promise<SearchResult>
         result.openIssues = repoData.open_issues_count as number;
         result.license = (repoData.license as { spdx_id?: string })?.spdx_id;
         result.lastCommitAt = repoData.pushed_at as string;
-        // 质量评分: stars为主 + 活跃度 + issue健康度
+        result.description = result.description || (repoData.description as string) || "";
+        if (!result.stars) result.stars = (repoData.stargazers_count as number) || 0;
+        // 质量评分: stars为主 + issue健康度（成熟项目不受活跃度惩罚）
         const stars = result.stars || 0;
         const issues = result.openIssues || 0;
         const pushedAt = result.lastCommitAt ? Date.parse(result.lastCommitAt) : 0;
         const daysSincePush = Math.max(0, (Date.now() - pushedAt) / 86400000);
-        // stars 得分 (0-70): 1000+ stars = 满分
-        const starScore = Math.min(70, Math.round(Math.log10(stars + 1) * 15));
-        // 活跃度 (0-20): 一周内=满分, 一年以上=0
-        const activityScore = Math.max(0, 20 - Math.round(daysSincePush / 18));
-        // 健康度 (0-10): open issues 少 = 健康
-        const issueRatio = stars > 0 ? issues / stars : 1;
-        const healthScore = Math.round(issueRatio < 0.001 ? 10 : issueRatio < 0.01 ? 7 : issueRatio < 0.1 ? 4 : 0);
+        // stars 得分 (0-70)
+        const starScore = Math.min(70, Math.round(Math.log10(stars + 1) * 14));
+        // 活跃度 (0-15): 成熟项目(>10k stars)不惩罚
+        const isMature = stars > 10000;
+        const activityScore = isMature ? 15 : Math.max(0, 15 - Math.round(daysSincePush / 24));
+        // 健康度 (0-15): issue/star 比率
+        const issueRatio = stars > 0 ? issues / Math.max(1, stars) : 1;
+        const healthScore = issueRatio < 0.001 ? 15 : issueRatio < 0.01 ? 10 : issueRatio < 0.05 ? 5 : 1;
         result.qualityScore = Math.min(100, starScore + activityScore + healthScore);
       }
     }
