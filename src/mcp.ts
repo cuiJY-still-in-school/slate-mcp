@@ -35,9 +35,7 @@ export async function startMcpServer(): Promise<void> {
   registerSlatePublish(server);
   registerSlateReview(server);
 
-  // stdio 传输
+  // stdio 传输 — 静默启动，MCP 协议不允许非 JSON 输出
   const transport = new StdioServerTransport();
   await server.connect(transport);
-
-  console.error(`🪨 石板 MCP Server v${SERVER_VERSION} — ${authStatus}`);
 }
