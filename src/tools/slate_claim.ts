@@ -39,13 +39,13 @@ PREREQUISITES: GitHub CLI must be authenticated (gh auth login).`,
         const data = await res.json() as Record<string, unknown>;
         if (data.status !== "open") return { content: [{ type: "text", text: `❌ 意图状态是 "${data.status}"，只有 open 状态可以认领` }], isError: true };
 
-        // Fork
-        const forkResult = execSync(`gh repo fork "${repo}" --clone=false --json url,owner`, {
+        // Fork via REST API (兼容旧版 gh CLI)
+        const forkResult = execSync(`gh api repos/${repo}/forks -X POST -f default_branch_only=true`, {
           encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], timeout: 30000,
         });
         const fork = JSON.parse(forkResult.trim());
         const forkOwner = fork.owner?.login || username;
-        const forkRepo = `${forkOwner}/${repo.split("/")[1]}`;
+        const forkRepo = fork.full_name || `${forkOwner}/${repo.split("/")[1]}`;
 
         // Update + commit
         data.status = "claimed"; data.claimed_by = forkOwner;
@@ -54,7 +54,10 @@ PREREQUISITES: GitHub CLI must be authenticated (gh auth login).`,
         const slateDir = join(tmp, ".slate");
         if (!existsSync(slateDir)) mkdirSync(slateDir, { recursive: true });
         writeFileSync(join(slateDir, "intention.json"), JSON.stringify(data, null, 2) + "\n");
-        execSync(`cd "${tmp}" && git add . && git commit -m "slate: claim — ${data.summary}" && git push`, {
+        // 确保 git 身份配置
+        const gitEmail = process.env.GIT_AUTHOR_EMAIL || `${forkOwner}@users.noreply.github.com`;
+        const gitName = process.env.GIT_AUTHOR_NAME || forkOwner;
+        execSync(`cd "${tmp}" && git config user.email "${gitEmail}" && git config user.name "${gitName}" && git add . && git commit -m "slate: claim — ${data.summary}" && git push`, {
           stdio: ["pipe", "pipe", "pipe"], timeout: 30000,
         });
 
