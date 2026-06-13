@@ -3,3 +3,4 @@ dist/
 *.tsbuildinfo
 slate
 .slate-claim-tmp
+.mcp.json

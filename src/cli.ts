@@ -78,7 +78,9 @@ program
       return;
     }
 
-    const mcp = { mcpServers: { slate: { type: "stdio", command: "node", args: [join(cwd, "dist/index.js"), "mcp"] } } };
+    const token = auth.token;
+    const env = token ? { GH_TOKEN: token } : {};
+    const mcp = { mcpServers: { slate: { type: "stdio", command: "node", args: [join(cwd, "dist/index.js"), "mcp"], ...(token ? { env } : {}) } } };
     switch (platform) {
       case "claude-code": {
         writeFileSync(join(cwd, ".mcp.json"), JSON.stringify(mcp, null, 2) + "\n");
