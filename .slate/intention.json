@@ -3,7 +3,7 @@
   "proof_file": "",
   "proof_hash": "",
   "summary": "一个测试意图用于验证石板协议",
-  "status": "open",
-  "claimed_by": null,
+  "status": "claimed",
+  "claimed_by": "cuiJY-still-in-school",
   "completion_pr": null
 }
