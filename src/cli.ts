@@ -98,24 +98,23 @@ program
           const cd = join(home, ".cursor");
           if (!existsSync(cd)) mkdirSync(cd);
           writeFileSync(join(cd, "mcp.json"), JSON.stringify(mcp, null, 2) + "\n");
-          // AI 指令
-          writeFileSync(join(home, ".cursorrules"), "🪨 石板协议已激活。有 slate_search/review/read/write/claim/publish。写代码前 MUST 先调 slate_search。\n");
-          configured.push("Cursor (~/.cursor/mcp.json + ~/.cursorrules)");
+          writeFileSync(join(home, ".cursorrules"), cursorRules);
+          configured.push("Cursor (MCP + .cursorrules)");
           break;
         }
         case "openclaw": {
           const od = join(home, ".config", "openclaw");
           if (!existsSync(od)) mkdirSync(od, { recursive: true });
           writeFileSync(join(od, "mcp.json"), JSON.stringify(mcp, null, 2) + "\n");
-          writeFileSync(join(od, "instructions.md"), "# 石板协议\n写新代码前 MUST 先调 slate_search。\n");
-          configured.push("OpenClaw (~/.config/openclaw/)");
+          writeFileSync(join(od, "AGENTS.md"), slateAgentsMd);
+          configured.push("OpenClaw (MCP + AGENTS.md)");
           break;
         }
         case "copilot": {
           const ghDir = join(home, ".github");
           if (!existsSync(ghDir)) mkdirSync(ghDir);
-          writeFileSync(join(ghDir, "copilot-instructions.md"), "🪨 石板协议已激活。有 slate_search/review/read/write/claim/publish。写代码前 MUST 先调 slate_search。\n");
-          configured.push("Copilot (~/.github/copilot-instructions.md)");
+          writeFileSync(join(ghDir, "copilot-instructions.md"), copilotInstructions);
+          configured.push("Copilot (instructions.md)");
           break;
         }
       }
@@ -177,6 +176,53 @@ program
 
 // ─── detect ────────────────────────────────────────
 const home = process.env.HOME || "~";
+
+// ─── 平台 AI 指令模板 ─────────────────────────────
+const slateWorkflow = `🪨 石板协议已激活。
+
+你有 slate_search / slate_review / slate_read / slate_write / slate_publish / slate_claim 工具。
+
+## 铁律
+写任何新代码前，MUST 先调 slate_search 搜索 GitHub。不要重新发明轮子。
+
+## 工作流
+1. 搜索 → 评价 → 决定 → 记录 → 贡献
+2. 搜到了→review→评分≥60就复用
+3. 没搜到→自己写→写完了publish贡献回去`;
+
+const cursorRules = slateWorkflow + "\n\n工具速查: slate_search(每次写新功能前强制) | slate_review(搜到候选时) | slate_read(看协议) | slate_write(更新状态) | slate_claim(认领意图) | slate_publish(发布地基)\n";
+
+const slateAgentsMd = `# 石板 (Slate) — AI 行为准则
+
+你已接入石板协议网络。
+
+## 工作流（每次写代码前必走）
+1. **搜索** → 调 slate_search 查 GitHub 有没有现成的
+2. **评价** → 对最好的结果调 slate_review 看质量
+3. **决定** → 评分≥60 就复用；<60 就自己写
+4. **记录** → 复用了别人的→调 slate_write 更新 dependencies.json
+5. **贡献** → 自己写了可复用的→调 slate_publish 发布
+
+## 铁律
+- 写任何新功能前，第一件事是 slate_search。不搜就写=浪费时间。
+- 不要重新发明轮子。GitHub 上有几百万个仓库。
+- 你每次搜索都在帮后面的 AI 积累信号。
+
+## 工具
+| 工具 | 触发时机 |
+|------|----------|
+| slate_search | 每次写新功能前（强制） |
+| slate_review | 搜索后有候选时 |
+| slate_read | 需要看项目协议时 |
+| slate_write | 更新状态/添加依赖时 |
+| slate_claim | 认领别人的意图时 |
+| slate_publish | 创建了可复用组件时 |
+`;
+
+const copilotInstructions = `🪨 石板协议已激活。你有 6 个 Slate 工具：slate_search / slate_review / slate_read / slate_write / slate_claim / slate_publish
+
+铁律: **写任何新代码前，MUST 先调 slate_search。** 不要重新发明轮子。
+工作流: 用户说要写什么 → 立即 slate_search → 搜到就 review → 评分≥60就复用 → 写了可复用的就 publish。`;
 
 async function detectPlatform(): Promise<string | null> {
   try { execSync("claude --version", { stdio: "pipe", timeout: 3000 }); return "claude-code"; } catch {}
